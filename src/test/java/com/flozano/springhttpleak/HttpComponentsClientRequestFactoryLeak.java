@@ -54,25 +54,26 @@ public class HttpComponentsClientRequestFactoryLeak {
 
 	@Test
 	public void testForLeak() throws InterruptedException {
-		PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
-		cm.setMaxTotal(POOL_SIZE);
-		cm.setDefaultMaxPerRoute(POOL_SIZE);
-		HttpComponentsClientHttpRequestFactory rf = new HttpComponentsClientHttpRequestFactory(
-				HttpClientBuilder.create().setConnectionManager(cm).build());
-		RestTemplate rt = new RestTemplate(rf);
-		ExecutorService es = null;
-		try {
-			es = Executors.newFixedThreadPool(THREADS_REQUESTING);
-			for (int i = 0; i < REQUESTS; i++) {
-				es.submit(() -> rt.put("http://127.0.0.1:" + PORT + "/example",
-						"Hello"));
+		try (PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager()) {
+			cm.setMaxTotal(POOL_SIZE);
+			cm.setDefaultMaxPerRoute(POOL_SIZE);
+			HttpComponentsClientHttpRequestFactory rf = new HttpComponentsClientHttpRequestFactory(
+					HttpClientBuilder.create().setConnectionManager(cm).build());
+			RestTemplate rt = new RestTemplate(rf);
+			ExecutorService es = null;
+			try {
+				es = Executors.newFixedThreadPool(THREADS_REQUESTING);
+				for (int i = 0; i < REQUESTS; i++) {
+					es.submit(() -> rt.put("http://127.0.0.1:" + PORT
+							+ "/example", "Hello"));
+				}
+			} finally {
+				es.shutdown();
+				assertTrue(es.awaitTermination(5, TimeUnit.SECONDS));
 			}
-		} finally {
-			es.shutdown();
-			assertTrue(es.awaitTermination(5, TimeUnit.SECONDS));
+			PoolStats stats = cm.getTotalStats();
+			assertEquals(POOL_SIZE, stats.getAvailable());
+			assertEquals(0, stats.getLeased());
 		}
-		PoolStats stats = cm.getTotalStats();
-		assertEquals(POOL_SIZE, stats.getAvailable());
-		assertEquals(0, stats.getLeased());
 	}
 }
